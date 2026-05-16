@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ETF Rechner</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ETF Rechner">
+<meta name="theme-color" content="#0a0f1e">
+
+<!-- Apple Touch Icons (inline SVG → PNG via canvas, generated on first load) -->
+<link rel="apple-touch-icon" id="appleTouchIcon">
+
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0f1e;--surface:#111827;--surface2:#1a2332;
+    --border:#1e3a5f;--accent:#00d4ff;--gold:#f5c518;
+    --text:#e8f4f8;--muted:#7a9bb5;
+    --green:#00ff9d;--red:#ff6b35;--purple:#c084fc;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  html{font-size:16px;}
+  body{
+    background:var(--bg);color:var(--text);
+    font-family:'DM Mono',monospace;
+    min-height:100vh;
+    /* iOS safe areas */
+    padding-top:env(safe-area-inset-top);
+    padding-bottom:calc(env(safe-area-inset-bottom) + 16px);
+    padding-left:env(safe-area-inset-left);
+    padding-right:env(safe-area-inset-right);
+  }
+  body::before{
+    content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:
+      radial-gradient(ellipse 120% 40% at 50% 0%,rgba(0,255,157,0.06) 0%,transparent 60%),
+      radial-gradient(ellipse 80% 40% at 80% 100%,rgba(0,212,255,0.04) 0%,transparent 60%);
+  }
+  .page{max-width:480px;margin:0 auto;padding:20px 16px 32px;position:relative;z-index:1;}
+
+  /* HEADER */
+  .header{margin-bottom:20px;}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;
+    background:rgba(0,255,157,0.1);border:1px solid rgba(0,255,157,0.25);
+    color:var(--green);font-size:10px;letter-spacing:2px;text-transform:uppercase;
+    padding:5px 12px;border-radius:20px;margin-bottom:12px;
+  }
+  .chip::before{content:'';width:5px;height:5px;background:var(--green);border-radius:50%;animation:pulse 2s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+  h1{font-family:'DM Serif Display',serif;font-size:28px;color:#fff;line-height:1.15;}
+  h1 em{font-style:italic;color:var(--green);}
+  .h1-sub{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;}
+
+  /* INSTALL BANNER – shown only when not in standalone */
+  .install-banner{
+    display:none;
+    background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.25);
+    border-radius:12px;padding:12px 14px;margin-bottom:14px;
+    font-size:11px;color:var(--accent);line-height:1.6;
+  }
+  .install-banner strong{color:#fff;}
+
+  /* RESULT PILL */
+  .result-pill{
+    background:var(--surface);border-radius:16px;
+    border:1px solid rgba(0,255,157,0.3);
+    padding:18px;margin-bottom:14px;
+    position:relative;overflow:hidden;
+    transition:border-color .3s;
+  }
+  .result-pill::before{
+    content:'';position:absolute;top:0;left:0;right:0;height:3px;
+    background:linear-gradient(90deg,var(--green),var(--accent));
+  }
+  .rp-label{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+  .rp-ok{font-family:'DM Serif Display',serif;font-size:22px;color:var(--green);line-height:1.2;}
+  .rp-bad{font-family:'DM Serif Display',serif;font-size:22px;color:var(--red);line-height:1.2;}
+  .rp-detail{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7;}
+  .rp-detail strong{color:var(--text);}
+  .rp-detail .g{color:var(--green);}
+  .rp-detail .r{color:var(--red);}
+
+  /* SLIDERS */
+  .slider-card{
+    background:var(--surface);border-radius:12px;
+    border:1px solid var(--border);
+    padding:16px;margin-bottom:10px;
+  }
+  .sc-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;}
+  .sc-label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);line-height:1.5;}
+  .sc-label span{display:block;font-size:13px;color:var(--text);letter-spacing:0;margin-top:2px;text-transform:none;}
+  .sc-value{font-family:'DM Serif Display',serif;font-size:32px;line-height:1;min-width:80px;text-align:right;}
+
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;
+    width:100%;height:28px;background:transparent;cursor:pointer;outline:none;
+  }
+  input[type=range]::-webkit-slider-runnable-track{
+    height:6px;border-radius:3px;
+    background:linear-gradient(to right,var(--track-col,var(--green)) var(--pct,0%),#1e3a5f var(--pct,0%));
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    width:28px;height:28px;border-radius:50%;
+    background:var(--track-col,var(--green));
+    border:3px solid var(--bg);
+    box-shadow:0 0 12px rgba(0,255,157,0.3);
+    margin-top:-11px;
+  }
+  .sc-minmax{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px;}
+
+  /* STATS */
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+  .stat{background:var(--surface);border-radius:10px;border:1px solid var(--border);padding:12px;}
+  .stat-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:5px;}
+  .stat-value{font-family:'DM Serif Display',serif;font-size:22px;}
+  .stat-sub{font-size:10px;color:var(--muted);margin-top:3px;}
+
+  /* CHART */
+  .chart-card{background:var(--surface);border-radius:12px;border:1px solid var(--border);padding:14px;margin-bottom:10px;}
+  .chart-title{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+  .chart-legend{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+  .cl-item{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);}
+  .cl-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+  svg{width:100%;display:block;touch-action:none;}
+
+  /* TABLE */
+  .table-card{background:var(--surface);border-radius:12px;border:1px solid var(--border);overflow:hidden;margin-bottom:10px;}
+  .table-title{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:11px 13px;border-bottom:1px solid var(--border);}
+  .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  table{width:100%;border-collapse:collapse;font-size:11px;}
+  thead th{
+    padding:7px 9px;text-align:right;font-size:9px;letter-spacing:1px;
+    text-transform:uppercase;color:var(--muted);font-weight:400;
+    background:var(--surface2);border-bottom:1px solid var(--border);white-space:nowrap;
+  }
+  thead th:first-child{text-align:left;}
+  tbody tr{border-bottom:1px solid rgba(30,58,95,0.35);}
+  tbody tr.tr-highlight{background:rgba(0,255,157,0.06)!important;}
+  tbody tr.tr-warn{background:rgba(245,197,24,0.05)!important;}
+  tbody tr.tr-bad{background:rgba(255,107,53,0.06)!important;}
+  tbody td{padding:7px 9px;text-align:right;color:var(--muted);white-space:nowrap;}
+  tbody td:first-child{text-align:left;color:var(--text);}
+  .bdg{font-size:8px;padding:1px 4px;border-radius:2px;margin-left:3px;}
+  .bdg-g{background:rgba(0,255,157,0.2);color:var(--green);}
+  .bdg-r{background:rgba(255,107,53,0.2);color:var(--red);}
+
+  .note{
+    background:rgba(245,197,24,0.06);border:1px solid rgba(245,197,24,0.2);
+    border-radius:10px;padding:13px;font-size:11px;color:#c4a84a;line-height:1.75;margin-bottom:10px;
+  }
+  .note strong{color:var(--gold);}
+
+  /* offline badge */
+  .offline-badge{
+    display:none;position:fixed;bottom:calc(env(safe-area-inset-bottom)+12px);
+    left:50%;transform:translateX(-50%);
+    background:rgba(255,107,53,0.9);color:#fff;
+    font-size:11px;padding:6px 16px;border-radius:20px;
+    backdrop-filter:blur(8px);z-index:99;
+  }
+
+  @keyframes fadeUp{to{opacity:1;transform:translateY(0)}}
+  .fade{opacity:0;transform:translateY(10px);animation:fadeUp .35s ease forwards;}
+</style>
+</head>
+<body>
+
+<div class="offline-badge" id="offlineBadge">📵 Offline – Rechner läuft trotzdem</div>
+
+<div class="page">
+
+  <div class="header fade">
+    <div class="chip">Kombinations-Rechner</div>
+    <h1>Welche Kombi<br><em>funktioniert?</em></h1>
+    <div class="h1-sub">Starte bei 265 € · ETF 294,25 € · +7% p.a.<br>Referenzkonto darf nie negativ werden.</div>
+  </div>
+
+  <div class="install-banner" id="installBanner">
+    <strong>💡 Als App installieren:</strong> Tippe unten auf das Teilen-Symbol (□↑) → „Zum Home-Bildschirm" → dann läuft der Rechner wie eine echte App, auch offline.
+  </div>
+
+  <!-- RESULT -->
+  <div class="result-pill fade" style="animation-delay:.05s" id="resultPill">
+    <div class="rp-label">Ergebnis</div>
+    <div id="pillText"></div>
+    <div class="rp-detail" id="pillDetail"></div>
+  </div>
+
+  <!-- SLIDER: Starteinzahlung -->
+  <div class="slider-card fade" style="animation-delay:.1s">
+    <div class="sc-top">
+      <div class="sc-label">Monatliche<br><span>Start-Einzahlung</span></div>
+      <div class="sc-value" style="color:var(--accent)" id="inVal">265 €</div>
+    </div>
+    <input type="range" id="inSlider" min="265" max="400" step="1" value="265"
+      style="--track-col:var(--accent)" oninput="onSlider()">
+    <div class="sc-minmax"><span>265 €</span><span>300 €</span><span>340 €</span><span>370 €</span><span>400 €</span></div>
+  </div>
+
+  <!-- SLIDER: Einzahlungs-Dynamik -->
+  <div class="slider-card fade" style="animation-delay:.15s">
+    <div class="sc-top">
+      <div class="sc-label">Dynamik deiner<br><span>Einzahlung p.a.</span></div>
+      <div class="sc-value" style="color:var(--purple)" id="inDynVal">0,00%</div>
+    </div>
+    <input type="range" id="inDynSlider" min="0" max="7" step="0.25" value="0"
+      style="--track-col:var(--purple)" oninput="onSlider()">
+    <div class="sc-minmax"><span>0%</span><span>1,75%</span><span>3,5%</span><span>5,25%</span><span>7%</span></div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats fade" style="animation-delay:.2s" id="statsGrid"></div>
+
+  <!-- CHART -->
+  <div class="chart-card fade" style="animation-delay:.25s">
+    <div class="chart-title">Referenzkonto · 25 Jahre</div>
+    <div class="chart-legend">
+      <div class="cl-item"><div class="cl-dot" style="background:var(--red)"></div>265 € fix</div>
+      <div class="cl-item"><div class="cl-dot" style="background:var(--accent)"></div>Deine Einstellung</div>
+      <div class="cl-item"><div class="cl-dot" style="background:var(--gold)"></div>Dividende</div>
+    </div>
+    <svg id="chart" viewBox="0 0 340 180" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-card fade" style="animation-delay:.3s">
+    <div class="table-title">Jahresdetail</div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Jahr</th>
+            <th style="color:var(--red)">ETF/Mon.</th>
+            <th style="color:var(--accent)">Einz./Mon.</th>
+            <th style="color:var(--gold)">Div. p.a.</th>
+            <th style="color:var(--accent)">Ref.kto.</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="note fade" style="animation-delay:.35s">
+    <strong>Tipp:</strong> Schiebe beide Regler, bis das Ergebnis <span style="color:var(--green)">grün</span> wird – das ist dein persönlicher Schwellwert. Alle Berechnungen laufen lokal auf deinem Gerät.
+  </div>
+
+</div>
+
+<script>
+// ── CONSTANTS ──────────────────────────────────────────────────────────
+const START_DEPOT=12601,ETF0=294.25,ETF_DYN=0.07;
+const DIV0=0.0128,DIV_G=0.03,REF0=401,REF_INT=0.02;
+const RATE=0.0667,Y=25;
+
+// ── MODEL ──────────────────────────────────────────────────────────────
+function model(inStart,inDyn){
+  const rM=Math.pow(1+RATE,1/12)-1;
+  let depot=START_DEPOT,etf=ETF0,inc=inStart;
+  let div=DIV0,ref=REF0,rows=[];
+  for(let y=0;y<Y;y++){
+    if(y>0){etf*=(1+ETF_DYN);inc*=(1+inDyn);}
+    const gap=(inc-etf)*12;
+    let mid=depot;for(let m=0;m<6;m++)mid=mid*(1+rM)+etf;
+    const divInc=((depot+mid)/2)*div;
+    let end=depot;for(let m=0;m<12;m++)end=end*(1+rM)+etf;
+    ref=ref*(1+REF_INT)+divInc+gap;
+    rows.push({
+      yr:2026+y+1,yn:y+1,
+      etf:Math.round(etf*10)/10,
+      inc:Math.round(inc*10)/10,
+      gap:Math.round(gap),
+      div:Math.round(divInc),
+      net:Math.round(divInc+gap),
+      ref:Math.round(ref),
+      depot:Math.round(end)
+    });
+    depot=end;div*=(1+DIV_G);
+  }
+  return rows;
+}
+
+function setSliderPct(el,val,min,max){
+  el.style.setProperty('--pct',((val-min)/(max-min)*100)+'%');
+}
+function fmt(n){return Math.round(n).toLocaleString('de-DE');}
+
+// ── MAIN UPDATE ────────────────────────────────────────────────────────
+function onSlider(){
+  const inStart=parseFloat(document.getElementById('inSlider').value);
+  const inDyn=parseFloat(document.getElementById('inDynSlider').value)/100;
+
+  setSliderPct(document.getElementById('inSlider'),inStart,265,400);
+  setSliderPct(document.getElementById('inDynSlider'),parseFloat(document.getElementById('inDynSlider').value),0,7);
+
+  document.getElementById('inVal').textContent=fmt(inStart)+' €';
+  document.getElementById('inDynVal').textContent=(inDyn*100).toFixed(2).replace('.',',')+'%';
+
+  const rows=model(inStart,inDyn);
+  const minR=Math.min(...rows.map(r=>r.ref));
+  const ok=minR>=0;
+  const depl=rows.find(r=>r.ref<0);
+  const turn=rows.find(r=>r.net>=0);
+  const divC=rows.find(r=>r.div>=Math.abs(r.gap));
+
+  // Pill
+  const pill=document.getElementById('resultPill');
+  pill.style.borderColor=ok?'rgba(0,255,157,0.35)':'rgba(255,107,53,0.35)';
+  const pText=document.getElementById('pillText');
+  pText.className=ok?'rp-ok':'rp-bad';
+  pText.textContent=ok?'✓ Plan funktioniert!':'✗ Referenzkonto wird negativ';
+  document.getElementById('pillDetail').innerHTML=ok
+    ?`<strong>Tiefpunkt:</strong> <span class="g">${fmt(minR)} €</span>`+
+     (turn?` &nbsp;·&nbsp; <strong>Turnaround:</strong> <span class="g">${turn.yr}</span>`:'')+
+     (divC?` &nbsp;·&nbsp; <strong>Div. ≥ Lücke:</strong> <span class="g">${divC.yr}</span>`:'')
+    :`Kippt <span class="r">${depl?depl.yr+' (Jahr '+depl.yn+')':''}</span> ins Negative. Erhöhe Startbetrag oder Dynamik.`;
+
+  // Stats
+  const r14=rows[13],r25=rows[24];
+  document.getElementById('statsGrid').innerHTML=`
+    <div class="stat">
+      <div class="stat-label">Min. Referenzkt.</div>
+      <div class="stat-value" style="color:${ok?'var(--green)':'var(--red)'}">${fmt(minR)} €</div>
+      <div class="stat-sub">${ok?'✓ nie negativ':'✗ wird negativ'}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Einzahlung Jahr 14</div>
+      <div class="stat-value" style="color:var(--accent)">${fmt(r14.inc)} €</div>
+      <div class="stat-sub">pro Monat</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Dividende Jahr 25</div>
+      <div class="stat-value" style="color:var(--gold)">${fmt(r25.div)} €</div>
+      <div class="stat-sub">pro Jahr</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Depotwert Jahr 25</div>
+      <div class="stat-value" style="color:var(--green)">${Math.round(r25.depot/1000)}k €</div>
+      <div class="stat-sub">Real Case 6,67%</div>
+    </div>`;
+
+  drawChart(inStart,inDyn,rows);
+
+  // Table
+  const tb=document.getElementById('tableBody');
+  tb.innerHTML='';
+  rows.forEach(d=>{
+    const isTR=turn&&d.yn===turn.yn;
+    const isBad=d.ref<0;
+    const isMS=d.yn===5||d.yn===10||d.yn===14||d.yn===20||d.yn===25;
+    const cls=isTR?' class="tr-highlight"':isBad?' class="tr-bad"':isMS?' class="tr-warn"':'';
+    const badge=isTR?'<span class="bdg bdg-g">↑</span>':isBad?'<span class="bdg bdg-r">!</span>':'';
+    const rc=d.ref<0?'color:var(--red)':d.ref<300?'color:var(--gold)':'color:var(--accent)';
+    tb.innerHTML+=`<tr${cls}>
+      <td>${d.yr}${badge}</td>
+      <td style="color:var(--red)">${d.etf.toLocaleString('de-DE',{minimumFractionDigits:0})} €</td>
+      <td style="color:var(--accent)">${d.inc.toLocaleString('de-DE',{minimumFractionDigits:0})} €</td>
+      <td style="color:var(--gold)">${fmt(d.div)} €</td>
+      <td style="${rc}">${fmt(d.ref)} €</td>
+    </tr>`;
+  });
+}
+
+// ── CHART ──────────────────────────────────────────────────────────────
+function drawChart(inStart,inDyn,rows){
+  const svg=document.getElementById('chart');
+  const W=340,H=180,PL=50,PR=8,PT=12,PB=26;
+  const cW=W-PL-PR,cH=H-PT-PB;
+  const base=model(265,0);
+  const allAll=[...rows,...base].map(r=>r.ref).concat(rows.map(r=>r.div));
+  const minV=Math.min(...allAll,0)*1.2;
+  const maxV=Math.max(...allAll)*1.12;
+  const rng=maxV-minV;
+  const yS=v=>PT+cH-((v-minV)/rng)*cH;
+  const xS=i=>PL+(i/(Y-1))*cW;
+  let h='';
+
+  for(let i=0;i<=3;i++){
+    const v=minV+(rng/3)*i,y=yS(v);
+    h+=`<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#1e3a5f" stroke-width="1"/>`;
+    const lbl=Math.abs(v)>=1000?(v/1000).toFixed(0)+'k':Math.round(v);
+    h+=`<text x="${PL-4}" y="${y+3.5}" text-anchor="end" fill="#7a9bb5" font-size="9" font-family="DM Mono,monospace">${lbl}</text>`;
+  }
+  const z=yS(0);
+  h+=`<line x1="${PL}" y1="${z}" x2="${W-PR}" y2="${z}" stroke="rgba(255,107,53,0.5)" stroke-width="1" stroke-dasharray="3,2"/>`;
+  rows.forEach((d,i)=>{
+    if(d.yn===1||d.yn===5||d.yn===10||d.yn===15||d.yn===20||d.yn===25)
+      h+=`<text x="${xS(i)}" y="${H-5}" text-anchor="middle" fill="#7a9bb5" font-size="9" font-family="DM Mono,monospace">${d.yr.toString().slice(2)}</text>`;
+  });
+
+  // dividend area
+  const dP=rows.map((d,i)=>`${xS(i)},${yS(d.div)}`).join(' ');
+  h+=`<polygon points="${xS(0)},${yS(0)} ${dP} ${xS(Y-1)},${yS(0)}" fill="rgba(245,197,24,0.08)"/>`;
+  h+=`<polyline points="${dP}" fill="none" stroke="#f5c518" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="4,2"/>`;
+
+  // base (265 fix)
+  const bP=base.map((d,i)=>`${xS(i)},${yS(d.ref)}`).join(' ');
+  h+=`<polyline points="${bP}" fill="none" stroke="#ff6b35" stroke-width="1.5" stroke-dasharray="4,2" stroke-linejoin="round"/>`;
+
+  // current
+  const cP=rows.map((d,i)=>`${xS(i)},${yS(d.ref)}`).join(' ');
+  h+=`<polygon points="${xS(0)},${yS(Math.max(minV,0))} ${cP} ${xS(Y-1)},${yS(Math.max(minV,0))}" fill="rgba(0,212,255,0.06)"/>`;
+  h+=`<polyline points="${cP}" fill="none" stroke="#00d4ff" stroke-width="2" stroke-linejoin="round"/>`;
+  rows.forEach((d,i)=>{
+    if(d.yn===5||d.yn===10||d.yn===15||d.yn===20||d.yn===25)
+      h+=`<circle cx="${xS(i)}" cy="${yS(d.ref)}" r="3.5" fill="${d.ref<0?'#ff6b35':'#00d4ff'}"/>`;
+  });
+  svg.innerHTML=h;
+}
+
+// ── PWA: Service Worker ────────────────────────────────────────────────
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  });
+}
+
+// ── PWA: App Icon via Canvas ───────────────────────────────────────────
+function generateIcon(size){
+  const c=document.createElement('canvas');
+  c.width=c.height=size;
+  const ctx=c.getContext('2d');
+  // background
+  ctx.fillStyle='#0a0f1e';
+  ctx.beginPath();
+  ctx.roundRect(0,0,size,size,size*0.22);
+  ctx.fill();
+  // green glow
+  const g=ctx.createRadialGradient(size*.5,size*.35,0,size*.5,size*.35,size*.55);
+  g.addColorStop(0,'rgba(0,255,157,0.18)');
+  g.addColorStop(1,'transparent');
+  ctx.fillStyle=g;
+  ctx.fillRect(0,0,size,size);
+  // chart line
+  ctx.strokeStyle='#00ff9d';
+  ctx.lineWidth=size*0.045;
+  ctx.lineCap='round';
+  ctx.lineJoin='round';
+  ctx.beginPath();
+  const pts=[[.15,.72],[.28,.58],[.42,.62],[.55,.44],[.68,.38],[.82,.22],[.88,.18]];
+  pts.forEach(([x,y],i)=>i===0?ctx.moveTo(x*size,y*size):ctx.lineTo(x*size,y*size));
+  ctx.stroke();
+  // accent dot
+  ctx.fillStyle='#00d4ff';
+  ctx.beginPath();
+  ctx.arc(size*.88,size*.18,size*.055,0,Math.PI*2);
+  ctx.fill();
+  // "ETF" text
+  ctx.fillStyle='#e8f4f8';
+  ctx.font=`bold ${size*.18}px monospace`;
+  ctx.textAlign='center';
+  ctx.fillText('ETF',size*.5,size*.88);
+  return c.toDataURL('image/png');
+}
+
+window.addEventListener('DOMContentLoaded',()=>{
+  // generate and set apple touch icon
+  try{
+    const icon192=generateIcon(192);
+    const link=document.getElementById('appleTouchIcon');
+    link.href=icon192;
+  }catch(e){}
+
+  // show install banner only in Safari (not standalone)
+  const isStandalone=window.navigator.standalone===true;
+  const isSafari=/^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  if(!isStandalone && isSafari){
+    document.getElementById('installBanner').style.display='block';
+  }
+
+  // offline/online badge
+  const badge=document.getElementById('offlineBadge');
+  window.addEventListener('offline',()=>badge.style.display='block');
+  window.addEventListener('online',()=>badge.style.display='none');
+  if(!navigator.onLine) badge.style.display='block';
+});
+
+// ── INIT ───────────────────────────────────────────────────────────────
+setSliderPct(document.getElementById('inSlider'),265,265,400);
+setSliderPct(document.getElementById('inDynSlider'),0,0,7);
+onSlider();
+</script>
+</body>
+</html>
